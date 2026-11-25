@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>転がりチーズ</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --panel-bg: rgba(255, 252, 240, 0.92);
+        --panel-text: #3d2c07;
+        --panel-sub: #7a6428;
+        --accent: #f2a007;
+        --accent-dark: #d97f00;
+        --btn-text: #fff8ea;
+        --hud-text: #ffffff;
+        --hud-shadow: rgba(40, 60, 10, 0.55);
+        --danger: #ff5147;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --panel-bg: rgba(38, 32, 16, 0.93);
+          --panel-text: #fdf3d0;
+          --panel-sub: #cbb26a;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+        overflow: hidden;
+        background: #8ec9e8;
+      }
+      button { min-height: 2.75rem; font-family: inherit; }
+      #stage {
+        position: fixed; inset: 0;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #stage canvas { display: block; }
+
+      /* ---------- HUD ---------- */
+      #hud {
+        position: fixed; top: max(10px, env(safe-area-inset-top)); left: 0; right: 0;
+        display: none; justify-content: center; pointer-events: none; z-index: 5;
+      }
+      #hud.show { display: flex; }
+      #distance {
+        font-size: clamp(30px, 6vw, 44px); font-weight: 800; line-height: 1;
+        color: var(--hud-text);
+        text-shadow: 0 2px 0 var(--hud-shadow), 0 4px 14px var(--hud-shadow);
+        letter-spacing: 0.02em;
+      }
+      #distance small { font-size: 0.55em; font-weight: 700; margin-left: 2px; }
+      #distance.danger { color: #ffd9d6; animation: pulse 0.45s ease-in-out infinite alternate; }
+      @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.07); } }
+      #chasers {
+        position: fixed; top: max(64px, calc(env(safe-area-inset-top) + 54px)); left: 0; right: 0;
+        text-align: center; pointer-events: none; z-index: 5;
+        font-size: 14px; font-weight: 700; color: var(--hud-text);
+        text-shadow: 0 1px 6px var(--hud-shadow);
+        display: none;
+      }
+      #chasers.show { display: block; }
+
+      /* ---------- Overlays ---------- */
+      .overlay {
+        position: fixed; inset: 0; z-index: 10;
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px;
+      }
+      .overlay.hidden { display: none; }
+      .panel {
+        background: var(--panel-bg);
+        color: var(--panel-text);
+        border-radius: 22px;
+        padding: 28px 30px 26px;
+        max-width: 430px; width: 100%;
+        text-align: center;
+        box-shadow: 0 18px 50px rgba(30, 40, 5, 0.35);
+        border: 3px solid rgba(242, 160, 7, 0.55);
+        max-height: calc(100dvh - 40px);
+        overflow-y: auto;
+      }
+      .panel h1 {
+        margin: 0 0 4px;
+        font-size: clamp(34px, 9vw, 48px);
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+      .panel h1 .ch { color: var(--accent-dark); }
+      .panel h2 { margin: 0 0 6px; font-size: clamp(26px, 7vw, 34px); font-weight: 800; }
+      .tagline { margin: 0 0 18px; color: var(--panel-sub); font-weight: 700; font-size: 15px; }
+      .big-btn {
+        display: inline-block;
+        background: linear-gradient(180deg, #ffb61e, var(--accent));
+        color: var(--btn-text);
+        border: none; border-radius: 999px;
+        font-size: 21px; font-weight: 800;
+        padding: 13px 46px;
+        cursor: pointer;
+        box-shadow: 0 5px 0 var(--accent-dark), 0 10px 22px rgba(160, 95, 0, 0.35);
+        text-shadow: 0 1px 2px rgba(120, 70, 0, 0.4);
+      }
+      .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--accent-dark); }
+      .howto {
+        text-align: left; margin: 22px auto 4px; max-width: 340px;
+        font-size: 14px; line-height: 1.75; font-weight: 500;
+      }
+      .howto h3 { margin: 0 0 6px; font-size: 15px; font-weight: 800; text-align: center; }
+      .howto ul { margin: 0; padding-left: 1.25em; }
+      .best-line { margin: 16px 0 0; font-weight: 800; font-size: 16px; }
+      .best-line span { color: var(--accent-dark); }
+      .result-dist { font-size: clamp(44px, 13vw, 62px); font-weight: 800; line-height: 1.1; margin: 2px 0; }
+      .result-dist small { font-size: 0.5em; }
+      .new-record {
+        display: none; margin: 4px 0 0; font-weight: 800; color: var(--danger); font-size: 17px;
+      }
+      .new-record.show { display: block; }
+      .result-best { margin: 6px 0 20px; color: var(--panel-sub); font-weight: 700; }
+
+      /* ---------- Virtual stick ---------- */
+      #stick-base, #stick-knob {
+        position: fixed; z-index: 6; pointer-events: none;
+        border-radius: 50%; display: none;
+      }
+      #stick-base {
+        width: 118px; height: 118px;
+        border: 3px solid rgba(255, 255, 255, 0.75);
+        background: rgba(255, 255, 255, 0.16);
+        transform: translate(-50%, -50%);
+      }
+      #stick-knob {
+        width: 54px; height: 54px;
+        background: rgba(255, 200, 60, 0.9);
+        border: 3px solid rgba(255, 255, 255, 0.85);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+        transform: translate(-50%, -50%);
+      }
+      #stick-base.on, #stick-knob.on { display: block; }
+      #err {
+        position: fixed; inset: auto 12px 12px 12px; z-index: 30; display: none;
+        background: #7a1610; color: #fff; padding: 12px 16px; border-radius: 12px;
+        font-size: 14px; font-weight: 700; text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="hud"><div id="distance">0<small>m</small></div></div>
+    <div id="chasers"></div>
+
+    <div id="stick-base"></div>
+    <div id="stick-knob"></div>
+
+    <div class="overlay" id="title-screen">
+      <div class="panel">
+        <h1>転がり<span class="ch">チーズ</span></h1>
+        <p class="tagline">丘を転がって、追手から逃げきろう！</p>
+        <button class="big-btn" id="start-btn" type="button">スタート</button>
+        <div class="howto">
+          <h3>遊び方</h3>
+          <ul>
+            <li>画面を触るとスティックが出るよ。上＝加速（押している間ぐんぐん加速するけど上限速度あり）、下＝ブレーキ、左右＝移動</li>
+            <li>キーボードは矢印キー / WASD でもOK</li>
+            <li>チーズは坂を勝手に転がる。下りで加速、上りで減速</li>
+            <li>丸太・岩・干し草・低木に当たると高く跳ねる（減速は少しだけ）。追手はもっと転びやすい</li>
+            <li>空中にいる間は捕まらない。空中でも操作できて、左右で着地点をずらしたり、上で加速・下で急降下できる</li>
+            <li>追手は100mごとに1人増える。捕まるまでの距離を競おう</li>
+          </ul>
+        </div>
+        <p class="best-line">最高記録：<span id="title-best">0 m</span></p>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="over-screen">
+      <div class="panel">
+        <h2>つかまった！</h2>
+        <div class="result-dist"><span id="result-dist">0</span><small> m</small></div>
+        <p class="new-record" id="new-record">★ 新記録！</p>
+        <p class="result-best">最高記録：<span id="over-best">0 m</span></p>
+        <button class="big-btn" id="retry-btn" type="button">もう一回</button>
+      </div>
+    </div>
+
+    <div id="err"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
+    <script>
+    (function () {
+      'use strict';
+      var errBox = document.getElementById('err');
+      function showErr(msg) { errBox.textContent = msg; errBox.style.display = 'block'; }
+      if (typeof THREE === 'undefined') {
+        showErr('3Dライブラリを読み込めませんでした。通信環境を確認してもう一度開いてください。');
+        return;
+      }
+
+      /* ================= 基本設定 ================= */
+      var PATH_HALF = 7;            // 道の半幅（柵の位置）
+      var CHEESE_R = 0.55;
+      var GRAV = 66;                // 空中の重力（以前の3倍：落下を速くして重さを出す）
+      var BOOST_CAP = 7.5;          // ↑入力で加速できる上限速度（9.0から引き下げ）。これは「入力の効き」だけの上限で、下り坂など物理由来の速度には関係しない
+      var SOFT_CAP = 11.5;          // 全体のソフトキャップ開始速度（↑加速導入前の従来値）。BOOST_CAPとは独立で、物理で出た速い速度はここから緩やかに減衰するだけ
+      var CHUNK_LEN = 30;
+      var BEST_KEY = 'korogari-cheese-best';
+
+      var best = 0;
+      try { best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch (e) { best = 0; }
+
+      /* ================= 地形 =================
+         z が進む方向。全体にゆるい下り＋うねり。 */
+      function groundH(x, z) {
+        return -z * 0.045
+          + Math.sin(z * 0.020 + 2.2) * 3.4
+          + Math.sin(z * 0.049 + 1.7) * 1.5
+          + Math.sin(z * 0.121 + 2.6) * 0.38
+          + Math.sin(x * 0.15 + z * 0.028) * 0.55
+          + Math.cos(x * 0.06) * 0.45;
+      }
+      function slopeZ(x, z) {
+        var d = 0.6;
+        return (groundH(x, z + d) - groundH(x, z - d)) / (2 * d);
+      }
+      function slopeX(x, z) {
+        var d = 0.6;
+        return (groundH(x + d, z) - groundH(x - d, z)) / (2 * d);
+      }
+      function hash2(a, b) {
+        var s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+        return s - Math.floor(s);
+      }
+      function mulberry32(seed) {
+        var t = seed >>> 0;
+        return function () {
+          t += 0x6D2B79F5;
+          var r = Math.imul(t ^ (t >>> 15), 1 | t);
+          r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+          return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      /* ================= three.js セットアップ ================= */
+      var stage = document.getElementById('stage');
+      var renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      stage.appendChild(renderer.domElement);
+
+      var scene = new THREE.Scene();
+      // 空のグラデーション
+      (function () {
+        var c = document.createElement('canvas'); c.width = 4; c.height = 256;
+        var g = c.getContext('2d');
+        var gr = g.createLinearGradient(0, 0, 0, 256);
+        gr.addColorStop(0, '#5ea9dd');
+        gr.addColorStop(0.55, '#9fd0ec');
+        gr.addColorStop(0.8, '#dcefc9');
+        gr.addColorStop(1, '#eef3d0');
+        g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+        var tex = new THREE.CanvasTexture(c);
+        scene.background = tex;
+      })();
+      scene.fog = new THREE.Fog(0xcfe4d8, 45, 185);
+
+      var camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 600);
+
+      var hemi = new THREE.HemisphereLight(0xcfe5ff, 0x69914e, 0.75);
+      scene.add(hemi);
+      var sun = new THREE.DirectionalLight(0xfff1d6, 1.15);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = -34; sun.shadow.camera.right = 34;
+      sun.shadow.camera.top = 34; sun.shadow.camera.bottom = -34;
+      sun.shadow.camera.near = 1; sun.shadow.camera.far = 120;
+      sun.shadow.bias = -0.0006;
+      scene.add(sun);
+      scene.add(sun.target);
+
+      window.addEventListener('resize', function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      /* ================= 地面 ================= */
+      var GROUND_W = 190, GROUND_L = 280, SEG_X = 76, SEG_Z = 112;
+      var groundGeo = new THREE.PlaneGeometry(GROUND_W, GROUND_L, SEG_X, SEG_Z);
+      groundGeo.rotateX(-Math.PI / 2);
+      var gPos = groundGeo.attributes.position;
+      var gColors = new Float32Array(gPos.count * 3);
+      groundGeo.setAttribute('color', new THREE.BufferAttribute(gColors, 3));
+      var groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+      var ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      var grassA = { r: 0.36, g: 0.63, b: 0.26 };
+      var grassB = { r: 0.46, g: 0.70, b: 0.30 };
+      var dirt = { r: 0.62, g: 0.55, b: 0.34 };
+      var groundZ = 1e9;
+      function updateGround(cz) {
+        var snapZ = Math.round(cz / 2) * 2;
+        ground.position.set(0, 0, snapZ + 55);
+        for (var i = 0; i < gPos.count; i++) {
+          var wx = gPos.getX(i);
+          var wz = gPos.getZ(i) + ground.position.z;
+          gPos.setY(i, groundH(wx, wz));
+          var n = hash2(Math.round(wx / 3), Math.round(wz / 3));
+          var r = grassA.r + (grassB.r - grassA.r) * n;
+          var g = grassA.g + (grassB.g - grassA.g) * n;
+          var b = grassA.b + (grassB.b - grassA.b) * n;
+          var ax = Math.abs(wx);
+          if (ax < PATH_HALF + 1.6) { // 道の部分は少し土色
+            var t = ax > PATH_HALF ? (PATH_HALF + 1.6 - ax) / 1.6 : 1;
+            r += (dirt.r - r) * t * 0.55;
+            g += (dirt.g - g) * t * 0.55;
+            b += (dirt.b - b) * t * 0.55;
+          }
+          gColors[i * 3] = r; gColors[i * 3 + 1] = g; gColors[i * 3 + 2] = b;
+        }
+        gPos.needsUpdate = true;
+        groundGeo.computeVertexNormals();
+        groundZ = snapZ;
+      }
+
+      /* ================= 柵（インスタンシング） ================= */
+      var woodMat = new THREE.MeshLambertMaterial({ color: 0x8a5a2b });
+      var woodDark = new THREE.MeshLambertMaterial({ color: 0x74491f });
+      var SEG = 4; // 柵1区間の長さ
+      var fenceRange = 250;
+      var nSeg = Math.ceil(fenceRange / SEG);
+      var postGeo = new THREE.BoxGeometry(0.22, 1.25, 0.22);
+      var railGeo = new THREE.BoxGeometry(0.1, 0.16, SEG + 0.15);
+      var posts = new THREE.InstancedMesh(postGeo, woodDark, nSeg * 2 + 2);
+      var rails = new THREE.InstancedMesh(railGeo, woodMat, nSeg * 2 * 2);
+      posts.castShadow = true;
+      rails.castShadow = false;
+      scene.add(posts); scene.add(rails);
+      var dummy = new THREE.Object3D();
+      var fenceZ = 1e9;
+      function updateFences(cz) {
+        var startZ = Math.floor((cz - 35) / SEG) * SEG;
+        var pi = 0, ri = 0, s, side, x, z0, z1, y0, y1;
+        for (s = 0; s < nSeg; s++) {
+          z0 = startZ + s * SEG; z1 = z0 + SEG;
+          for (side = -1; side <= 1; side += 2) {
+            x = side * (PATH_HALF + 0.55);
+            y0 = groundH(x, z0); y1 = groundH(x, z1);
+            if (s === 0 || side < 0) { /* 柱は区間ごとに1本（両側） */ }
+            dummy.position.set(x, y0 + 0.55, z0);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            if (pi < posts.count) posts.setMatrixAt(pi++, dummy.matrix);
+            // レール2段
+            for (var lvl = 0; lvl < 2; lvl++) {
+              var hgt = lvl === 0 ? 0.95 : 0.5;
+              dummy.position.set(x, (y0 + y1) / 2 + hgt, (z0 + z1) / 2);
+              dummy.rotation.set(Math.atan2(y0 - y1, SEG), 0, 0);
+              dummy.updateMatrix();
+              if (ri < rails.count) rails.setMatrixAt(ri++, dummy.matrix);
+            }
+          }
+        }
+        posts.count = pi; rails.count = ri;
+        posts.instanceMatrix.needsUpdate = true;
+        rails.instanceMatrix.needsUpdate = true;
+        fenceZ = startZ;
+      }
+
+      /* ================= 雲 ================= */
+      var cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.92 });
+      var cloudGeo = new THREE.SphereGeometry(1, 10, 8);
+      var clouds = [];
+      (function () {
+        var rnd = mulberry32(12345);
+        for (var i = 0; i < 9; i++) {
+          var grp = new THREE.Group();
+          var n = 3 + Math.floor(rnd() * 3);
+          for (var j = 0; j < n; j++) {
+            var m = new THREE.Mesh(cloudGeo, cloudMat);
+            m.position.set(j * 2.4 - n, rnd() * 1.2, rnd() * 2 - 1);
+            m.scale.set(2.6 + rnd() * 2.4, 1.1 + rnd() * 0.6, 1.8 + rnd());
+            grp.add(m);
+          }
+          grp.position.set((rnd() - 0.5) * 190, 30 + rnd() * 16, rnd() * 320 - 60);
+          scene.add(grp);
+          clouds.push(grp);
+        }
+      })();
+
+      /* ================= 素材（全て自作の図形・テクスチャ） ================= */
+      function cheeseFaceTexture() {
+        var c = document.createElement('canvas'); c.width = c.height = 256;
+        var g = c.getContext('2d');
+        g.fillStyle = '#f6c93e'; g.fillRect(0, 0, 256, 256);
+        // 縁（オレンジ）
+        g.strokeStyle = '#e8862e'; g.lineWidth = 30;
+        g.beginPath(); g.arc(128, 128, 112, 0, Math.PI * 2); g.stroke();
+        g.strokeStyle = '#c96a1b'; g.lineWidth = 4;
+        g.beginPath(); g.arc(128, 128, 96, 0, Math.PI * 2); g.stroke();
+        // 穴
+        g.fillStyle = '#dda51f';
+        var holes = [[92, 84, 21], [168, 108, 15], [118, 168, 18], [178, 176, 11], [70, 150, 10]];
+        for (var i = 0; i < holes.length; i++) {
+          g.beginPath();
+          g.ellipse(holes[i][0], holes[i][1], holes[i][2], holes[i][2] * 0.72, 0.5, 0, Math.PI * 2);
+          g.fill();
+        }
+        var tex = new THREE.CanvasTexture(c);
+        return tex;
+      }
+
+      /* ================= チーズ ================= */
+      var cheeseGroup = new THREE.Group();
+      var cheeseWheel;
+      (function () {
+        var geo = new THREE.CylinderGeometry(CHEESE_R, CHEESE_R, 0.34, 28);
+        geo.rotateZ(Math.PI / 2); // 軸をX方向へ＝車輪
+        var rimMat = new THREE.MeshLambertMaterial({ color: 0xe8862e });
+        var faceMat = new THREE.MeshLambertMaterial({ map: cheeseFaceTexture() });
+        cheeseWheel = new THREE.Mesh(geo, [rimMat, faceMat, faceMat]);
+        cheeseWheel.castShadow = true;
+        cheeseGroup.add(cheeseWheel);
+        scene.add(cheeseGroup);
+      })();
+
+      /* ================= 障害物・木（共有ジオメトリ） =================
+         サイズは本家観察の比率（チーズ直径=1.1を「1」として）に合わせる。
+         コース幅は直径の約13倍（PATH_HALF 7＝幅14 ≒ 12.7倍）。 */
+      function logSideTexture() {
+        var c = document.createElement('canvas'); c.width = 256; c.height = 64;
+        var g = c.getContext('2d');
+        g.fillStyle = '#7a4a20'; g.fillRect(0, 0, 256, 64);
+        // 横方向の木目
+        for (var i = 0; i < 26; i++) {
+          var y = Math.random() * 64;
+          g.strokeStyle = 'rgba(' + (40 + Math.random() * 40 | 0) + ',24,8,' + (0.25 + Math.random() * 0.4) + ')';
+          g.lineWidth = 1 + Math.random() * 2.2;
+          g.beginPath(); g.moveTo(0, y);
+          g.bezierCurveTo(80, y + Math.random() * 4 - 2, 170, y + Math.random() * 4 - 2, 256, y);
+          g.stroke();
+        }
+        for (var j = 0; j < 8; j++) { // 節
+          g.fillStyle = 'rgba(52,30,10,0.55)';
+          g.beginPath(); g.ellipse(Math.random() * 256, Math.random() * 64, 5, 3, 0, 0, Math.PI * 2); g.fill();
+        }
+        return new THREE.CanvasTexture(c);
+      }
+      function logEndTexture() {
+        var c = document.createElement('canvas'); c.width = c.height = 128;
+        var g = c.getContext('2d');
+        g.fillStyle = '#cfa96a'; g.fillRect(0, 0, 128, 128);
+        g.strokeStyle = 'rgba(146,104,52,0.8)';
+        for (var r = 10; r < 62; r += 8 + Math.random() * 5) {
+          g.lineWidth = 1.6;
+          g.beginPath(); g.arc(64, 64, r, 0, Math.PI * 2); g.stroke();
+        }
+        g.strokeStyle = '#8a5a2b'; g.lineWidth = 7;
+        g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.stroke();
+        return new THREE.CanvasTexture(c);
+      }
+      function hayTopTexture() {
+        var c = document.createElement('canvas'); c.width = c.height = 256;
+        var g = c.getContext('2d');
+        g.fillStyle = '#dcba3e'; g.fillRect(0, 0, 256, 256);
+        // 同心円の渦巻き模様（濃い茶の線）
+        g.strokeStyle = 'rgba(146,106,26,0.85)';
+        for (var r = 8; r < 128; r += 9) {
+          g.lineWidth = 2.4;
+          g.beginPath(); g.arc(128, 128, r, 0, Math.PI * 2); g.stroke();
+        }
+        g.strokeStyle = 'rgba(120,84,18,0.5)';
+        for (var i = 0; i < 40; i++) { // 藁の粒
+          var a = Math.random() * Math.PI * 2, rr = Math.random() * 120;
+          g.lineWidth = 1.4;
+          g.beginPath();
+          g.moveTo(128 + Math.cos(a) * rr, 128 + Math.sin(a) * rr);
+          g.lineTo(128 + Math.cos(a) * (rr + 7), 128 + Math.sin(a) * (rr + 7));
+          g.stroke();
+        }
+        return new THREE.CanvasTexture(c);
+      }
+      function haySideTexture() {
+        var c = document.createElement('canvas'); c.width = 256; c.height = 64;
+        var g = c.getContext('2d');
+        g.fillStyle = '#d3af34'; g.fillRect(0, 0, 256, 64);
+        // 横の層線
+        for (var y = 6; y < 64; y += 9) {
+          g.strokeStyle = 'rgba(146,106,26,0.75)'; g.lineWidth = 2;
+          g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke();
+        }
+        g.strokeStyle = 'rgba(120,84,18,0.4)';
+        for (var i = 0; i < 60; i++) {
+          var x = Math.random() * 256, yy = Math.random() * 64;
+          g.lineWidth = 1.2;
+          g.beginPath(); g.moveTo(x, yy); g.lineTo(x + 8, yy); g.stroke();
+        }
+        return new THREE.CanvasTexture(c);
+      }
+      // 丸太：長さ4.4（直径の4倍）・太さ0.66（同0.6倍）の円柱。軸はX＝コースを横切る向き
+      var logGeo = new THREE.CylinderGeometry(0.33, 0.33, 4.4, 14); logGeo.rotateZ(Math.PI / 2);
+      var logMat = new THREE.MeshLambertMaterial({ map: logSideTexture() });
+      var logEndMat = new THREE.MeshLambertMaterial({ map: logEndTexture() });
+      // 岩：多面体。個体ごとに広さ・低さを変え、下半分を地面に埋める
+      var rockGeo = new THREE.DodecahedronGeometry(0.62, 0);
+      var rockMat = new THREE.MeshLambertMaterial({ color: 0xb4b9be, flatShading: true });
+      // 干し草：直径2.0（同1.8倍）・厚み0.75（直径の約0.38）のドラム型。縦置き／横置き両用
+      var hayGeoUp = new THREE.CylinderGeometry(1.0, 1.0, 0.75, 18);
+      var hayGeoSide = new THREE.CylinderGeometry(1.0, 1.0, 0.75, 18); hayGeoSide.rotateZ(Math.PI / 2);
+      var haySideMat = new THREE.MeshLambertMaterial({ map: haySideTexture() });
+      var hayTopMat = new THREE.MeshLambertMaterial({ map: hayTopTexture() });
+      // 低木：不均一なドーム＋棘状の突起。花は直径の約0.05と小さい
+      var bushGeo = new THREE.IcosahedronGeometry(0.62, 1);
+      var bushMat = new THREE.MeshLambertMaterial({ color: 0x2e6b26, flatShading: true });
+      var spikeGeo = new THREE.ConeGeometry(0.15, 0.42, 6);
+      var flowerGeo = new THREE.SphereGeometry(0.032, 6, 5);
+      var flowerMat = new THREE.MeshLambertMaterial({ color: 0xffd83d });
+      var trunkGeo = new THREE.CylinderGeometry(0.16, 0.24, 1.6, 7);
+      var trunkMat = new THREE.MeshLambertMaterial({ color: 0x6e4520 });
+      var leafGeo = new THREE.ConeGeometry(1.35, 3.0, 8);
+      var leafMat = new THREE.MeshLambertMaterial({ color: 0x2f6e2a, flatShading: true });
+      var leaf2Mat = new THREE.MeshLambertMaterial({ color: 0x4c9440, flatShading: true });
+
+      /* 障害物1個を作る。戻り値 { mesh, r: 当たり判定半径, w: コース横方向の占有幅, top: てっぺんの高さ }
+         寸法はチーズ直径=1.1 を 1 とした本家観察の比率に合わせ、地面に接地させる */
+      function makeObstacleMesh(type, rnd) {
+        var grp = new THREE.Group();
+        var r = 0.7, w = 1.6, top = 0.8; // top: 接地点からてっぺんまでの高さ（接触判定用）
+        if (type === 'log') {
+          // 長さ3.4〜5.3（多くは4.4）・太さ0.56〜0.92（多くは0.66）。長さ÷太さ 約5〜7
+          var sx = 0.78 + rnd() * 0.42;         // 長さ方向
+          var st = 0.85 + rnd() * 0.55;         // 太さ方向
+          var m = new THREE.Mesh(logGeo, [logMat, logEndMat, logEndMat]);
+          m.castShadow = true;
+          m.scale.set(sx, st, st);
+          m.position.y = 0.33 * st;             // 接地
+          grp.add(m);
+          grp.rotation.y = (rnd() - 0.5) * 0.45; // コースを横切る向き（やや斜めあり）
+          w = 4.4 * sx;
+          r = w * 0.36;
+          top = 0.66 * st; // 円柱の中心 0.33*st ＋ 半径 0.33*st
+        } else if (type === 'rock') {
+          // 幅1.1〜2.7・高いほど幅は狭く。半分埋まった感じに沈める
+          var rsx = 0.9 + rnd() * 1.3;
+          var rsy = 1.18 - (rsx - 0.9) * 0.26;
+          var rk = new THREE.Mesh(rockGeo, rockMat);
+          rk.castShadow = true;
+          rk.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+          rk.scale.set(rsx, rsy, 0.85 + rnd() * 0.5);
+          rk.position.y = 0.62 * rsy * 0.42;
+          grp.add(rk);
+          w = 1.24 * rsx;
+          r = w * 0.38;
+          top = 0.80 * rsy; // 中心 0.26*rsy ＋ 表面までの高さ（向きで変わる分の中央値）
+        } else if (type === 'hay') {
+          // 直径1.9〜2.2・厚みは直径の約0.38。縦置き（上面に渦巻き）と横置きの両方
+          var hs = 0.94 + rnd() * 0.16;
+          var upright = rnd() < 0.5;
+          var h = new THREE.Mesh(upright ? hayGeoUp : hayGeoSide, [haySideMat, hayTopMat, hayTopMat]);
+          h.castShadow = true;
+          h.scale.setScalar(hs);
+          if (upright) {
+            h.position.y = 0.375 * hs;
+            w = 2.0 * hs;
+            top = 0.75 * hs; // ドラムの厚み分
+          } else {
+            h.position.y = 1.0 * hs;            // 接地
+            if (rnd() < 0.5) grp.rotation.y = Math.PI / 2; // 円面が前を向く置き方も
+            w = 2.0 * hs;
+            top = 2.0 * hs; // 横置きは中心 1.0*hs ＋ 半径 1.0*hs
+          }
+          grp.add(h);
+          r = 0.95 * hs;
+        } else { // bush
+          // 幅1.7〜2.2・高さ1.3〜1.6のドーム。棘状の突起で上面を不均一にし、
+          // 小さな黄色い花を全体に20〜40個。ときどき2個重なる
+          var bsx = 1.35 + rnd() * 0.4;
+          var bsy = 1.15 + rnd() * 0.3;
+          var pair = rnd() < 0.3;
+          addBushDome(grp, rnd, 0, bsx, bsy);
+          if (pair) addBushDome(grp, rnd, 1.15, bsx * 0.72, bsy * 0.8);
+          w = 1.24 * bsx + (pair ? 0.8 : 0);
+          r = w * 0.38;
+          top = 1.07 * bsy; // ドーム中心 0.45*bsy ＋ 半径 0.62*bsy（棘は細いので含めない）
+        }
+        return { mesh: grp, r: r, w: w, top: top };
+      }
+      function addBushDome(grp, rnd, offX, bsx, bsy) {
+        var cy = 0.62 * bsy * 0.72;
+        var s = new THREE.Mesh(bushGeo, bushMat);
+        s.castShadow = true;
+        s.scale.set(bsx, bsy, bsx * (0.9 + rnd() * 0.2));
+        s.position.set(offX, cy, 0);
+        s.rotation.y = rnd() * Math.PI;
+        grp.add(s);
+        // 棘状の突起
+        for (var i = 0; i < 6; i++) {
+          var sp = new THREE.Mesh(spikeGeo, bushMat);
+          var a = rnd() * Math.PI * 2, rr = 0.3 + rnd() * 0.3;
+          sp.position.set(offX + Math.cos(a) * rr * bsx * 0.6, cy + 0.5 * bsy + rnd() * 0.18, Math.sin(a) * rr * bsx * 0.6);
+          sp.rotation.set((rnd() - 0.5) * 0.7, 0, (rnd() - 0.5) * 0.7);
+          grp.add(sp);
+        }
+        // 小さな花（20〜40個をドーム表面に）
+        var nf = 20 + Math.floor(rnd() * 18);
+        for (var j = 0; j < nf; j++) {
+          var f = new THREE.Mesh(flowerGeo, flowerMat);
+          var th = rnd() * Math.PI * 2, ph = rnd() * Math.PI * 0.55;
+          f.position.set(
+            offX + Math.sin(ph) * Math.cos(th) * 0.62 * bsx * 1.02,
+            cy + Math.cos(ph) * 0.62 * bsy * 1.02,
+            Math.sin(ph) * Math.sin(th) * 0.62 * bsx * 1.02
+          );
+          grp.add(f);
+        }
+      }
+      function makeTree(rnd) {
+        var grp = new THREE.Group();
+        var t = new THREE.Mesh(trunkGeo, trunkMat); t.position.y = 0.8; t.castShadow = true; grp.add(t);
+        var c1 = new THREE.Mesh(leafGeo, rnd() > 0.5 ? leafMat : leaf2Mat);
+        c1.position.y = 3.0; c1.castShadow = true; grp.add(c1);
+        var c2 = new THREE.Mesh(leafGeo, leafMat);
+        c2.position.y = 4.1; c2.scale.setScalar(0.68); grp.add(c2);
+        var sc = 0.85 + rnd() * 0.7;
+        grp.scale.setScalar(sc);
+        return grp;
+      }
+
+      /* チャンク管理：障害物＋木を30mごとに生成・破棄 */
+      var chunks = {}; // index -> { group, obstacles: [] }
+      var runSeed = 1;
+      function chunkIndex(z) { return Math.floor(z / CHUNK_LEN); }
+      /* 障害物の「列」を1つ置く：同じ深さに2〜3個並べてコース幅の50〜70%をふさぎ、
+         残りを通路にする。通路の左右は列ごとに交互にずらしてジグザグにする。
+         障害物同士のすき間はチーズ直径の約1〜3倍（1.1〜3.3） */
+      function placeObstacleRow(grp, obstacles, rnd, rowZ, passageLeft) {
+        var types = ['log', 'rock', 'hay', 'bush'];
+        var passageW = 4.4 + rnd() * 2.2;                 // 通路幅（残りが塞ぐ割合）
+        var pcx = (passageLeft ? -1 : 1) * (PATH_HALF - passageW / 2);
+        var dir = passageLeft ? -1 : 1;                   // 通路と反対の端から並べる（通路が左なら右端から左へ）
+        var cursor = -dir * (PATH_HALF - 0.2);
+        for (var n = 0; n < 3; n++) {
+          var type = types[Math.floor(rnd() * 4)];
+          var info = makeObstacleMesh(type, rnd);
+          var w = info.w;
+          var cx = cursor + dir * (w / 2);
+          if (Math.abs(cx) + w / 2 > PATH_HALF - 0.1) break;      // 柵の内側のみ
+          if (Math.abs(cx - pcx) < passageW / 2 + w / 2 - 0.4) break; // 通路には置かない
+          var oz = rowZ + (rnd() - 0.5) * 2.2;
+          // 接地：坂でも平地でも必ずその地点の地面の高さに置き、少しだけ
+          // 沈めて縁の浮きを防ぐ。傾きは斜面に等倍で沿わせる。
+          // rotation.x の符号は -atan(勾配)：+z側が上がる上り坂では
+          // rotation.x を負にして+z側を持ち上げる（従来は符号が逆で、
+          // 坂では斜面と逆に傾いて浮き・埋まりが出ていた）。
+          info.mesh.position.set(cx, groundH(cx, oz) - 0.05, oz);
+          info.mesh.rotation.x = -Math.atan(slopeZ(cx, oz));
+          if (Math.abs(info.mesh.rotation.y) < 0.3) {
+            info.mesh.rotation.z = Math.atan(slopeX(cx, oz)); // 横方向の傾斜にも沿わせる
+          }
+          grp.add(info.mesh);
+          obstacles.push({ type: type, x: cx, z: oz, r: info.r, top: info.top, hitCheese: false });
+          cursor = cx + dir * (w / 2 + 0.9 + rnd() * 1.6);        // すき間
+        }
+      }
+      function buildChunk(idx) {
+        var rnd = mulberry32(idx * 7919 + runSeed * 104729 + 13);
+        var grp = new THREE.Group();
+        var obstacles = [];
+        var zBase = idx * CHUNK_LEN;
+        if (idx >= 1) { // スタート直後約30mは空ける
+          // 密度アップ（従来比で約1.5〜2倍）：空き地帯をなくし、どのチャンクにも
+          // 必ず列を置く。列の位置は地形（坂かどうか）によらずチャンク内に
+          // 均等に割り振るので、長い上り坂・下り坂・頂上付近でも平地と
+          // 同じ密度で障害物が出る（従来は約半分のチャンクが丸ごと空きで、
+          // 坂の区間に空きが重なると何もないように見えていた）。
+          var rows = 1 + (rnd() < 0.42 ? 1 : 0) + (rnd() < 0.12 ? 1 : 0); // 平均1.54列/チャンク
+          var span = CHUNK_LEN / rows;
+          for (var ri = 0; ri < rows; ri++) {
+            var rowZ = zBase + span * (ri + 0.5) + (rnd() - 0.5) * 3;
+            placeObstacleRow(grp, obstacles, rnd, rowZ, (idx + ri) % 2 === 0);
+          }
+        }
+        // 木（柵の外）
+        var nt = 3 + Math.floor(rnd() * 3);
+        for (var j = 0; j < nt; j++) {
+          var side = rnd() > 0.5 ? 1 : -1;
+          var tx = side * (PATH_HALF + 3.5 + rnd() * 26);
+          var tz = zBase + rnd() * CHUNK_LEN;
+          var tree = makeTree(rnd);
+          tree.position.set(tx, groundH(tx, tz) - 0.1, tz);
+          tree.rotation.y = rnd() * Math.PI * 2;
+          grp.add(tree);
+        }
+        scene.add(grp);
+        chunks[idx] = { group: grp, obstacles: obstacles };
+      }
+      function ensureChunks(cz) {
+        var lo = chunkIndex(cz - 45), hi = chunkIndex(cz + 185);
+        var k;
+        for (k = lo; k <= hi; k++) if (!chunks[k]) buildChunk(k);
+        for (k in chunks) {
+          var idx = +k;
+          if (idx < lo - 1 || idx > hi + 1) {
+            scene.remove(chunks[k].group);
+            delete chunks[k];
+          }
+        }
+      }
+      function obstaclesNear(z) {
+        var out = [];
+        var idx = chunkIndex(z);
+        [-1, 0, 1].forEach(function (d) {
+          var c = chunks[idx + d];
+          if (c) for (var i = 0; i < c.obstacles.length; i++) out.push(c.obstacles[i]);
+        });
+        return out;
+      }
+
+      /* ================= 追手（人型） ================= */
+      var skinMat = new THREE.MeshLambertMaterial({ color: 0xf2c184 });
+      var pantsMats = [0x34495e, 0x5d4037, 0x37474f, 0x4a3b5c].map(function (c) {
+        return new THREE.MeshLambertMaterial({ color: c });
+      });
+      var shirtColors = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf5f0e6, 0x9b59b6, 0xe67e22, 0xec6fa5, 0x1abc9c, 0xf39c12, 0x7fb3d5];
+      var headGeo = new THREE.SphereGeometry(0.17, 10, 8);
+      var torsoGeo = new THREE.BoxGeometry(0.44, 0.56, 0.26);
+      var armGeo = new THREE.BoxGeometry(0.12, 0.52, 0.12); armGeo.translate(0, -0.22, 0);
+      var legGeo = new THREE.BoxGeometry(0.15, 0.62, 0.15); legGeo.translate(0, -0.28, 0);
+
+      function makePerson(shirtColor, pantsMat) {
+        var root = new THREE.Group();
+        var body = new THREE.Group();
+        root.add(body);
+        var shirtMat = new THREE.MeshLambertMaterial({ color: shirtColor });
+        var torso = new THREE.Mesh(torsoGeo, shirtMat);
+        torso.position.y = 1.24; torso.castShadow = true; body.add(torso);
+        var head = new THREE.Mesh(headGeo, skinMat);
+        head.position.y = 1.72; head.castShadow = true; body.add(head);
+        var armL = new THREE.Mesh(armGeo, shirtMat); armL.position.set(-0.29, 1.48, 0); body.add(armL);
+        var armR = new THREE.Mesh(armGeo, shirtMat); armR.position.set(0.29, 1.48, 0); body.add(armR);
+        var legL = new THREE.Mesh(legGeo, pantsMat); legL.position.set(-0.12, 0.94, 0); body.add(legL);
+        var legR = new THREE.Mesh(legGeo, pantsMat); legR.position.set(0.12, 0.94, 0); body.add(legR);
+        scene.add(root);
+        return { root: root, body: body, armL: armL, armR: armR, legL: legL, legR: legR };
+      }
+
+      var chasers = [];
+      var shirtIdx = 0;
+      function spawnChaser(zPos, xPos) {
+        var p = makePerson(shirtColors[shirtIdx % shirtColors.length], pantsMats[shirtIdx % pantsMats.length]);
+        shirtIdx++;
+        var c = {
+          p: p,
+          x: xPos, z: zPos, speed: 3.4 + Math.random() * 0.8,
+          maxSpeed: 8.4 + Math.random() * 0.7,
+          lane: (Math.random() * 2 - 1) * 2.6,
+          phase: Math.random() * 6,
+          state: 'run',       // run | dive | catch | trip | getup
+          timer: 0,
+          diveCooldown: 1 + Math.random() * 2,
+          diveFromX: 0, diveFromZ: 0, diveToX: 0, diveToZ: 0,
+          lastOb: null
+        };
+        p.root.position.set(c.x, groundH(c.x, c.z), c.z);
+        chasers.push(c);
+        return c;
+      }
+      function removeChaser(c) {
+        scene.remove(c.p.root);
+        chasers.splice(chasers.indexOf(c), 1);
+      }
+
+      /* ================= ゲーム状態 ================= */
+      var state = 'title'; // title | play | over
+      var cheese = null;
+      var distance = 0;
+      var nextSpawnAt = 100;
+      var overTimer = 0;
+      var runTime = 0; // プレイ開始からの経過秒（スタート直後の捕獲防止に使う）
+      var camPos = new THREE.Vector3(0, 4, -9);
+      var camTilt = 0;
+      var elapsed = 0;
+
+      function resetCheese() {
+        cheese = {
+          x: 0, z: 0, y: groundH(0, 0) + CHEESE_R,
+          vx: 0, vz: 2.6, vy: 0,
+          grounded: true, groundVy: 0, roll: 0,
+          bounceAir: false // 障害物バウンスによる滞空中かどうか（弱重力の対象）
+        };
+        cheeseGroup.position.set(0, cheese.y, 0);
+        cheeseGroup.rotation.set(0, 0, 0);
+        cheeseWheel.rotation.set(0, 0, 0);
+      }
+      function startGame() {
+        // チャンクを作り直す（配置ランダム化）
+        for (var k in chunks) { scene.remove(chunks[k].group); }
+        chunks = {};
+        runSeed = (Math.random() * 1e6) | 0;
+        while (chasers.length) removeChaser(chasers[0]);
+        shirtIdx = 0;
+        resetCheese();
+        distance = 0;
+        nextSpawnAt = 100;
+        camTilt = 0;
+        overTimer = 0;
+        runTime = 0;
+        // 追手は最初6人：チーズの約9.8〜13.8m後ろに並べる。
+        // 前回（5〜8m）は近すぎたので距離を取り直したが、15〜31m後方だと
+        // カメラの後ろにいて全く見えなかったので、その中間——スタート直後は
+        // 画面の下端あたりに小さく見え、時間をかけて詰めてくる距離感にする
+        for (var i = 0; i < 6; i++) {
+          spawnChaser(-9.8 - i * 0.8, (Math.random() * 2 - 1) * 4);
+        }
+        groundZ = 1e9; fenceZ = 1e9;
+        ensureChunks(0);
+        updateGround(0);
+        updateFences(0);
+        camPos.set(0, cheese.y + 3.4, -8.5);
+        state = 'play';
+        document.getElementById('title-screen').classList.add('hidden');
+        document.getElementById('over-screen').classList.add('hidden');
+        document.getElementById('hud').classList.add('show');
+        document.getElementById('chasers').classList.add('show');
+        updateHud();
+      }
+      function gameOver() {
+        state = 'over';
+        overTimer = 0;
+        var d = Math.floor(distance);
+        var isRecord = d > best;
+        if (isRecord) {
+          best = d;
+          try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+        }
+        document.getElementById('result-dist').textContent = d;
+        document.getElementById('over-best').textContent = best + ' m';
+        document.getElementById('title-best').textContent = best + ' m';
+        document.getElementById('new-record').classList.toggle('show', isRecord);
+      }
+
+      /* ================= 入力 ================= */
+      var input = { x: 0, fwd: 0, brake: 0 }; // fwd: 加速 0..1 / brake: 0..1
+      var keys = {};
+      window.addEventListener('keydown', function (e) {
+        keys[e.code] = true;
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].indexOf(e.code) >= 0) e.preventDefault();
+      });
+      window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+      function keyInput() {
+        var x = 0, f = 0, b = 0;
+        if (keys['ArrowLeft'] || keys['KeyA']) x -= 1;
+        if (keys['ArrowRight'] || keys['KeyD']) x += 1;
+        if (keys['ArrowUp'] || keys['KeyW']) f += 1;
+        if (keys['ArrowDown'] || keys['KeyS']) b += 1;
+        return { x: x, fwd: f, brake: b };
+      }
+
+      var stickBase = document.getElementById('stick-base');
+      var stickKnob = document.getElementById('stick-knob');
+      var stick = { active: false, id: null, bx: 0, by: 0, x: 0, y: 0 };
+      var STICK_R = 52;
+      stage.addEventListener('pointerdown', function (e) {
+        if (state !== 'play' || stick.active) return;
+        stick.active = true; stick.id = e.pointerId;
+        stick.bx = e.clientX; stick.by = e.clientY; stick.x = 0; stick.y = 0;
+        stickBase.style.left = e.clientX + 'px'; stickBase.style.top = e.clientY + 'px';
+        stickKnob.style.left = e.clientX + 'px'; stickKnob.style.top = e.clientY + 'px';
+        stickBase.classList.add('on'); stickKnob.classList.add('on');
+        try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+      stage.addEventListener('pointermove', function (e) {
+        if (!stick.active || e.pointerId !== stick.id) return;
+        var dx = e.clientX - stick.bx, dy = e.clientY - stick.by;
+        var len = Math.hypot(dx, dy);
+        if (len > STICK_R) { dx = dx / len * STICK_R; dy = dy / len * STICK_R; }
+        stick.x = dx / STICK_R; stick.y = dy / STICK_R;
+        stickKnob.style.left = (stick.bx + dx) + 'px';
+        stickKnob.style.top = (stick.by + dy) + 'px';
+      });
+      function stickEnd(e) {
+        if (!stick.active || e.pointerId !== stick.id) return;
+        stick.active = false; stick.x = 0; stick.y = 0;
+        stickBase.classList.remove('on'); stickKnob.classList.remove('on');
+      }
+      stage.addEventListener('pointerup', stickEnd);
+      stage.addEventListener('pointercancel', stickEnd);
+
+      function readInput() {
+        var k = keyInput();
+        var x = k.x, f = k.fwd, b = k.brake;
+        if (stick.active) {
+          x += stick.x;
+          if (stick.y < 0) f += -stick.y; else b += stick.y;
+        }
+        input.x = Math.max(-1, Math.min(1, x));
+        input.fwd = Math.max(0, Math.min(1, f));
+        input.brake = Math.max(0, Math.min(1, b));
+      }
+
+      /* ================= HUD ================= */
+      var distEl = document.getElementById('distance');
+      var chasersEl = document.getElementById('chasers');
+      var lastHudDist = -1;
+      function updateHud() {
+        var d = Math.floor(distance);
+        if (d !== lastHudDist) {
+          lastHudDist = d;
+          distEl.innerHTML = d + '<small>m</small>';
+          chasersEl.textContent = '追手 ' + chasers.length + '人';
+        }
+      }
+
+      /* ================= チーズの物理 ================= */
+      function updateCheese(dt) {
+        var c = cheese;
+        var sl = slopeZ(c.x, c.z);
+        // 勾配による加速度（下り＝sl<0 で加速）。重力の斜面成分は以前の3倍。
+        var a = -27.0 * sl / (1 + sl * sl * 0.4);
+        // ↑入力の加速（限度あり）：上限速度 BOOST_CAP までは強く加速し、
+        // 上限に近づくにつれて入力の効きが弱まり、上限以上は入力だけでは
+        // 伸びない（下り坂の重力など物理由来の超過は従来通り）。
+        // 障害物バウンスの着地後など、減速した状態から能動的に立て直す
+        // ためのもの。空中でも同じ上限つきで効き（従来の空中加速を統合）、
+        // 着地直後からそのまま加速し直せる。
+        if (input.fwd > 0 && c.vz < BOOST_CAP) {
+          var bt = Math.min(1, (BOOST_CAP - c.vz) / 1.5);
+          a += input.fwd * (c.grounded ? 10.0 : 7.5) * bt;
+        }
+        a -= input.brake * 12.0;           // ブレーキ（重くなった分こちらも強め）
+        // 抵抗も強めて最高速は以前の落ち着いたペース（約13.5）に収める
+        a -= c.vz * 0.09 + c.vz * Math.abs(c.vz) * 0.012;
+        if (c.vz > SOFT_CAP) a -= (c.vz - SOFT_CAP) * 3.6; // ソフトキャップ（BOOST_CAPとは切り離し：↑入力の上限7.5より上で物理的に出た速度を7.5へ引き戻さない。従来通り約11.5から緩やかに効く）
+        c.vz += a * dt;
+        if (c.vz < 0) c.vz = c.vz < -2 ? -2 + (c.vz + 2) * 0.2 : c.vz; // 後退はほぼしない
+        if (c.vz < 0) c.vz = Math.max(c.vz, -1.5);
+        // 上り坂で失速しきって止まってしまう対策：接地中は最低限の転がりを保つ
+        // （追手側の「下限で上りでも止まらない」と同じ考え方。従来は長い上りで
+        // vz が 0 以下まで落ち、後退クランプに張り付いて永久に止まっていた。
+        // ブレーキ入力中は対象外＝意図的な減速は今まで通り効く）
+        if (c.grounded && input.brake <= 0 && c.vz < 2.4) c.vz = 2.4;
+
+        // 左右移動
+        // input.x は「画面上の方向」（+1＝画面右）。カメラ後方視点では
+        // ワールドの +X が画面左に映るため、ワールド速度へは符号を反転して渡す。
+        // （キー・スティック共通の修正：左キー／左ドラッグで画面左へ動く）
+        var speedF = Math.max(0, Math.min(1, c.vz / 13.5));
+        // 遠心力：前進速度が速いほど、横入力で外側へ大きく膨らむ
+        var centri = Math.min(4.6, c.vz * c.vz * 0.028);
+        // 空中では横の狙いを少し大きくして、着地点をずらせるようにする
+        var targetVx = -input.x * (5.0 + centri) * (c.grounded ? 1 : 1.3);
+        // 慣性：速いほど入力への追従と減衰が鈍り、離しても外側へ滑り続ける
+        var latRate = input.x !== 0 ? (7 - 3.2 * speedF) : (7 - 4.2 * speedF);
+        if (!c.grounded) latRate += 3.5; // 空中操作：左右入力への応答を強める
+        c.vx += (targetVx - c.vx) * Math.min(1, dt * latRate);
+        // 地面の横勾配（バンク）でも重力で低い側へ流れる
+        c.vx += -14.0 * slopeX(c.x, c.z) * dt;
+        c.x += c.vx * dt;
+        var lim = PATH_HALF - 0.45;
+        if (c.x > lim) { c.x = lim; if (c.vx > 0) c.vx = 0; }
+        if (c.x < -lim) { c.x = -lim; if (c.vx < 0) c.vx = 0; }
+
+        c.z += c.vz * dt;
+        if (c.z > distance) distance = c.z;
+
+        // 縦方向
+        var gy = groundH(c.x, c.z) + CHEESE_R;
+        if (c.grounded) {
+          var gv = (gy - c.y) / Math.max(dt, 0.001);
+          c.groundVy = gv;
+          if (gy < c.y - 0.38 && gv < -2.5) {
+            // 丘の頂上を勢いよく越えた → 空中へ
+            c.grounded = false;
+            c.vy = Math.max(gv, -5);
+            c.y += c.vy * dt;
+          } else {
+            c.y = gy;
+            c.vy = 0;
+          }
+        }
+        if (!c.grounded) {
+          // 障害物バウンスの滞空中だけ重力を弱めて、滞空時間を約2倍にする
+          // 初速と弱重力を両方とも半分にし、跳躍高さを半分にしつつ滞空時間を維持
+          // （h=v²/2g, t=2v/g より、vとgを同率で下げると t は不変で h だけ下がる）
+          // （丘の起伏で自然に浮いたときは通常の重力のまま）
+          var gNow = c.bounceAir ? GRAV * 0.25 : GRAV;
+          c.vy -= gNow * dt;
+          // 空中操作：下入力で落下を早める（急降下）
+          if (input.brake > 0) c.vy -= input.brake * 130 * dt;
+          c.y += c.vy * dt;
+          if (c.y <= gy) {
+            // 着地：強く落ちたときは前進速度も少し殺して「ドスン」と重く
+            if (c.vy < -13) c.vz *= 0.92;
+            c.y = gy;
+            c.grounded = true;
+            c.vy = 0;
+            c.bounceAir = false;
+          }
+        }
+
+        // 障害物との衝突
+        var obs = obstaclesNear(c.z);
+        for (var i = 0; i < obs.length; i++) {
+          var o = obs[i];
+          if (o.hitCheese) continue;
+          var dx = c.x - o.x, dz = c.z - o.z;
+          var rr = o.r + 0.42;
+          if (dx * dx + dz * dz < rr * rr) {
+            // 空中では高さも見る：チーズの底が障害物のてっぺんより上にある間は
+            // 接触していない（障害物の上を落下・通過中）ので跳ねない。
+            // てっぺんの高さまで降りて初めて接触として扱う。接地中の衝突は従来通り。
+            if (!c.grounded && c.y - CHEESE_R > groundH(o.x, o.z) - 0.05 + (o.top || 0.8) + 0.05) {
+              continue;
+            }
+            o.hitCheese = true;
+            // 跳ね上がりの上向き初速（丸太 21.0 / 岩 25.0 / 干し草 15.0）
+            // 前回の半分にし、弱重力も半分に連動させて高さを半分・滞空時間は維持
+            // 減速は従来の1/5だけにする（低下幅：丸太38%→8% / 岩50%→10% /
+            // 干し草28%→6% / 低木32%→6%）＝当たってもあまり減速しない
+            if (o.type === 'log') {
+              c.vz *= 0.92; bounce(c, 21.0);
+            } else if (o.type === 'rock') {
+              c.vz *= 0.90; bounce(c, 25.0);
+            } else if (o.type === 'hay') {
+              c.vz *= 0.94; bounce(c, 15.0);
+            } else { // bush: 減速のみ（跳ねさせない）
+              c.vz *= 0.94;
+            }
+          }
+        }
+
+        // 見た目
+        c.roll -= (c.vz / CHEESE_R) * dt;
+        cheeseWheel.rotation.x = c.roll;
+        cheeseGroup.position.set(c.x, c.y, c.z);
+        // 傾きは画面上の横速度（＝ -vx）に合わせる
+        cheeseGroup.rotation.z = c.vx * 0.028;
+        cheeseGroup.rotation.y = c.vx * 0.012;
+      }
+      function bounce(c, power) {
+        if (c.grounded || c.vy < power) {
+          c.grounded = false;
+          c.vy = power;
+          c.bounceAir = true; // この跳躍中は弱重力で滞空を長くする
+        }
+      }
+
+      /* ================= 追手の更新 ================= */
+      function tripChaser(c, dur) {
+        c.state = 'trip';
+        c.timer = dur || 1.15;
+        c.speed = 0;
+      }
+      /* 捕獲ジャンプ：捕獲圏内に入った追手がチーズ目がけて跳び、空中で
+         届いた瞬間に捕獲が確定する。滞空は約0.62秒で、弱重力気味に
+         フワッと浮くカーブ（sin^0.75）にする。水平位置は「今のチーズ
+         位置」へ補間し続けるので、ジャンプが始まったら逃げ切れない */
+      function startCatchJump(c) {
+        c.state = 'catch';
+        c.timer = 0;
+        c.catchDur = 0.62;
+        c.catchFromX = c.x;
+        c.catchFromZ = c.z;
+        c.catchY0 = c.p.root.position.y - groundH(c.x, c.z); // 開始時点の浮き（飛び込み中なら引き継ぐ）
+      }
+      function updateChaser(c, dt) {
+        var p = c.p;
+        c.diveCooldown -= dt;
+
+        if (c.state === 'catch') {
+          c.timer += dt;
+          var ct = Math.min(1, c.timer / c.catchDur);
+          // 水平：開始点から「今のチーズ位置」へ。チーズは通常通り転がり
+          // 続けるが、到達点が追従するので必ず届く（キャンセルなし）
+          c.x = c.catchFromX + (cheese.x - c.catchFromX) * ct;
+          c.z = c.catchFromZ + (cheese.z - c.catchFromZ) * ct;
+          // 縦：sin^0.75 の弱重力気味カーブでフワッと滞空する
+          var hang = Math.pow(Math.sin(ct * Math.PI), 0.75);
+          var yOff = c.catchY0 * (1 - ct) + hang * 0.95;
+          p.root.position.set(c.x, groundH(c.x, c.z) + yOff, c.z);
+          p.root.rotation.y = Math.atan2(cheese.x - c.x, cheese.z - c.z);
+          // 捕まえる姿勢：体を前に倒し、両腕を前へ伸ばし、脚は後ろに畳む
+          p.body.rotation.x = 0.6;
+          p.body.position.y = 0;
+          p.armL.rotation.x = -2.1;
+          p.armR.rotation.x = -2.1;
+          p.legL.rotation.x = 0.55;
+          p.legR.rotation.x = 0.3;
+          if (ct >= 1) {
+            // 空中でチーズに到達 → 捕獲確定、従来の終了演出へ
+            p.armL.rotation.x = -2.6;
+            p.armR.rotation.x = -2.6;
+            onCaught();
+          }
+          return;
+        }
+        if (c.state === 'trip') {
+          c.timer -= dt;
+          p.body.rotation.x += (1.35 - p.body.rotation.x) * Math.min(1, dt * 10);
+          p.root.position.y = groundH(c.x, c.z) + 0.12;
+          if (c.timer <= 0) { c.state = 'getup'; c.timer = 0.45; }
+          return;
+        }
+        if (c.state === 'getup') {
+          c.timer -= dt;
+          p.body.rotation.x += (0 - p.body.rotation.x) * Math.min(1, dt * 8);
+          c.speed += (c.maxSpeed * 0.4 - c.speed) * Math.min(1, dt * 3);
+          c.z += c.speed * dt;
+          p.root.position.set(c.x, groundH(c.x, c.z), c.z);
+          if (c.timer <= 0) { c.state = 'run'; p.body.rotation.x = 0; }
+          return;
+        }
+        if (c.state === 'dive') {
+          c.timer -= dt;
+          var t = 1 - Math.max(0, c.timer) / 0.55;
+          c.x = c.diveFromX + (c.diveToX - c.diveFromX) * t;
+          c.z = c.diveFromZ + (c.diveToZ - c.diveFromZ) * t;
+          var gy = groundH(c.x, c.z);
+          p.root.position.set(c.x, gy + Math.sin(t * Math.PI) * 0.85 + 0.1, c.z);
+          p.body.rotation.x = 0.85;
+          // 捕獲判定（チーズが地面にいるときだけ／スタート4秒間は捕まえない）
+          var ddx = cheese.x - c.x, ddz = cheese.z - c.z;
+          if (runTime > 4 && cheese.grounded && ddx * ddx + ddz * ddz < 1.15 * 1.15) {
+            startCatchJump(c);
+            return;
+          }
+          if (c.timer <= 0) {
+            // 飛び込み失敗 → 転ぶ
+            p.body.rotation.x = 0;
+            tripChaser(c, 1.25);
+            p.root.position.y = groundH(c.x, c.z) + 0.12;
+          }
+          return;
+        }
+
+        // --- run ---
+        var dz = cheese.z - c.z;
+        var sl = slopeZ(c.x, c.z);
+        var target = c.maxSpeed;
+        if (dz > 9) target += Math.min(2.6, (dz - 9) * 0.26); // 離れたときだけ穏やかに追い上げる（距離感を保ちつつ、完全に見失わないように）
+        // 坂の影響は目標速度への一回だけにする（以前は目標と実速度の両方に
+        // 効いていて上りで二重に失速していた）。下限4.2で上りでも止まらない
+        target += -sl * 10;
+        if (target < 4.2) target = 4.2;
+        if (target > 12.0) target = 12.0;
+        c.speed += (target - c.speed) * Math.min(1, dt * 0.55);
+        var effSpeed = c.speed;
+        c.z += effSpeed * dt;
+        // 横はチーズの進路へ寄る
+        var tx = cheese.x + c.lane;
+        var dxT = tx - c.x;
+        c.x += Math.max(-2.6 * dt, Math.min(2.6 * dt, dxT * dt * 1.1));
+        if (c.x > PATH_HALF - 0.3) c.x = PATH_HALF - 0.3;
+        if (c.x < -PATH_HALF + 0.3) c.x = -PATH_HALF + 0.3;
+
+        // 走りアニメ（脚の回転は実際の移動速度に比例させる）
+        c.phase += dt * Math.max(0, effSpeed) * 0.95;
+        var sw = Math.sin(c.phase);
+        p.legL.rotation.x = sw * 0.95;
+        p.legR.rotation.x = -sw * 0.95;
+        p.armL.rotation.x = -sw * 0.8;
+        p.armR.rotation.x = sw * 0.8;
+        p.body.rotation.x = 0.12;
+        p.body.position.y = Math.abs(Math.cos(c.phase)) * 0.06;
+        p.root.position.set(c.x, groundH(c.x, c.z), c.z);
+        p.root.rotation.y = Math.max(-0.4, Math.min(0.4, dxT * 0.05));
+
+        // 障害物で転ぶ（チーズより転びやすい）
+        var obs = obstaclesNear(c.z);
+        for (var i = 0; i < obs.length; i++) {
+          var o = obs[i];
+          if (o === c.lastOb) continue;
+          var ox = c.x - o.x, oz = c.z - o.z;
+          var rr = o.r + 0.3;
+          if (ox * ox + oz * oz < rr * rr) {
+            c.lastOb = o;
+            var prob = o.type === 'log' ? 0.82 : o.type === 'rock' ? 0.78 : o.type === 'hay' ? 0.72 : 0.4;
+            if (Math.random() < prob) {
+              if (o.type === 'bush' && Math.random() < 0.5) {
+                c.speed *= 0.35; // 低木は減速だけのことも
+              } else {
+                tripChaser(c, 1.0 + Math.random() * 0.5);
+              }
+            }
+          }
+        }
+
+        // 飛び込み判定（スタート4秒間は飛び込まない）
+        var cdx = cheese.x - c.x, cdz = cheese.z - c.z;
+        var dist2 = cdx * cdx + cdz * cdz;
+        if (runTime > 4 && dist2 < 4.3 * 4.3 && cdz > 0.4 && c.diveCooldown <= 0 && c.speed > 4) {
+          c.state = 'dive';
+          c.timer = 0.55;
+          c.diveFromX = c.x; c.diveFromZ = c.z;
+          c.diveToX = cheese.x + cheese.vx * 0.3;
+          c.diveToZ = cheese.z + cheese.vz * 0.42;
+          c.diveCooldown = 2.6 + Math.random() * 1.6;
+          return;
+        }
+        // 接触で捕獲圏内 → 即捕獲ではなく捕獲ジャンプへ（空中は捕まらない／スタート4秒間は捕まえない）
+        if (runTime > 4 && cheese.grounded && dist2 < 1.02 * 1.02) {
+          startCatchJump(c);
+        }
+      }
+
+      var caughtFlag = false;
+      function onCaught() {
+        if (state !== 'play') return;
+        caughtFlag = true;
+        gameOver();
+      }
+
+      /* ================= カメラ ================= */
+      function updateCamera(dt) {
+        var sp = cheese ? cheese.vz : 0;
+        var back = 7.2 + Math.max(0, sp) * 0.30;
+        var up = 3.1 + Math.max(0, sp) * 0.055;
+        var tx = cheese.x * 0.62;
+        var ty = cheese.y + up;
+        var tz = cheese.z - back;
+        var k = Math.min(1, dt * 4.2);
+        camPos.x += (tx - camPos.x) * k;
+        camPos.y += (ty - camPos.y) * Math.min(1, dt * 5);
+        camPos.z += (tz - camPos.z) * Math.min(1, dt * 7);
+        // カメラが地面にめり込まないように
+        var minY = groundH(camPos.x, camPos.z) + 1.1;
+        if (camPos.y < minY) camPos.y = minY;
+        camera.position.copy(camPos);
+        camera.lookAt(cheese.x * 0.85, cheese.y + 0.7, cheese.z + 5);
+        if (state === 'over') {
+          camTilt = Math.min(1, camTilt + dt * 1.4);
+          camera.rotation.z += camTilt * 0.85; // 捕まると大きく傾く
+          camera.position.y -= camTilt * 0.7;
+        } else if (camTilt > 0) {
+          camTilt = 0;
+        }
+      }
+
+      /* ================= メインループ ================= */
+      var clock = new THREE.Clock();
+      var nearestChaser = 1e9;
+      function animate() {
+        requestAnimationFrame(animate);
+        var dt = Math.min(clock.getDelta(), 0.05);
+        elapsed += dt;
+
+        if (state === 'play') {
+          runTime += dt;
+          readInput();
+          updateCheese(dt);
+
+          // 追手の追加：100mごとに1人
+          if (distance >= nextSpawnAt) {
+            nextSpawnAt += 100;
+            if (chasers.length < 24) {
+              // 追加の追手は20〜24m後ろから、全速で走りながら合流させる
+              var nc = spawnChaser(cheese.z - 20 - Math.random() * 4, cheese.x + (Math.random() * 2 - 1) * 4);
+              nc.speed = nc.maxSpeed;
+            }
+          }
+          nearestChaser = 1e9;
+          for (var i = chasers.length - 1; i >= 0; i--) {
+            var c = chasers[i];
+            updateChaser(c, dt);
+            if (state !== 'play') break;
+            var ddz = cheese.z - c.z;
+            if (ddz > 30) {
+              // 遅れた追手の救済：30m以上離れたら18〜21m後ろへ再配置し、
+              // ラバーバンドで追い上げて画面内へ戻ってこさせる
+              // （距離は取るが、長く姿が見えない状態にはしない）
+              c.z = cheese.z - 18 - Math.random() * 3;
+              c.x = cheese.x + (Math.random() * 2 - 1) * 4;
+              c.state = 'run'; c.speed = c.maxSpeed * 0.95;
+              c.p.body.rotation.x = 0;
+            }
+            var dd = Math.abs(ddz) + Math.abs(cheese.x - c.x) * 0.5;
+            if (dd < nearestChaser) nearestChaser = dd;
+          }
+          distEl.classList.toggle('danger', nearestChaser < 7 && state === 'play');
+
+          ensureChunks(cheese.z);
+          if (Math.abs(cheese.z - groundZ) > 2) updateGround(cheese.z);
+          if (Math.abs(cheese.z - fenceZ) > SEG) updateFences(cheese.z);
+          updateHud();
+        } else if (state === 'over') {
+          overTimer += dt;
+          // チーズは惰性で止まる
+          cheese.vz *= Math.max(0, 1 - dt * 2.4);
+          cheese.z += cheese.vz * dt;
+          cheese.y = groundH(cheese.x, cheese.z) + CHEESE_R;
+          cheeseGroup.position.set(cheese.x, cheese.y, cheese.z);
+          cheeseWheel.rotation.x -= (cheese.vz / CHEESE_R) * dt;
+          // 追手はチーズの周りに集まる
+          for (var j = 0; j < chasers.length; j++) {
+            var cc = chasers[j];
+            if (cc.state === 'trip') { updateChaser(cc, dt); continue; }
+            var gx = cheese.x - cc.x, gz = cheese.z - cc.z;
+            var gl = Math.hypot(gx, gz);
+            if (gl > 1.6) {
+              var step = Math.min(gl, dt * 4.5);
+              cc.x += gx / gl * step;
+              cc.z += gz / gl * step;
+              cc.phase += step * 0.95;
+              var sw2 = Math.sin(cc.phase);
+              cc.p.legL.rotation.x = sw2 * 0.9; cc.p.legR.rotation.x = -sw2 * 0.9;
+              cc.p.armL.rotation.x = -sw2 * 0.7; cc.p.armR.rotation.x = sw2 * 0.7;
+            } else {
+              cc.p.legL.rotation.x = 0; cc.p.legR.rotation.x = 0;
+              cc.p.armL.rotation.x = -2.6; cc.p.armR.rotation.x = -2.6; // 万歳
+            }
+            cc.p.root.position.set(cc.x, groundH(cc.x, cc.z), cc.z);
+            cc.p.root.rotation.y = Math.atan2(gx, gz);
+          }
+          if (overTimer > 1.0 && !document.getElementById('over-screen').classList.contains('show-once')) {
+            var os = document.getElementById('over-screen');
+            os.classList.remove('hidden');
+            os.classList.add('show-once');
+            document.getElementById('hud').classList.remove('show');
+            document.getElementById('chasers').classList.remove('show');
+            stick.active = false;
+            stickBase.classList.remove('on'); stickKnob.classList.remove('on');
+          }
+        } else {
+          // タイトル画面：ゆっくりカメラをパン
+          var t = elapsed * 0.05;
+          camera.position.set(Math.sin(t) * 6, groundH(0, 14) + 3.4, 14 - 10 + Math.cos(t) * 2);
+          camera.lookAt(0, groundH(0, 16) + 0.8, 16);
+          if (cheese) {
+            cheeseWheel.rotation.x -= dt * 1.2;
+          }
+        }
+
+        // 雲を流す・寄せる
+        for (var ci = 0; ci < clouds.length; ci++) {
+          var cl = clouds[ci];
+          cl.position.x += dt * 0.7;
+          if (cl.position.x > 120) cl.position.x = -120;
+          if (cheese && cl.position.z < cheese.z - 70) cl.position.z += 340;
+        }
+        // 太陽と影を追従
+        if (cheese) {
+          sun.position.set(cheese.x - 16, cheese.y + 30, cheese.z - 10);
+          sun.target.position.set(cheese.x, cheese.y, cheese.z + 6);
+        }
+
+        if (cheese && state !== 'title') updateCamera(dt);
+        renderer.render(scene, camera);
+      }
+
+      /* ================= UI ================= */
+      document.getElementById('title-best').textContent = best + ' m';
+      document.getElementById('start-btn').addEventListener('click', function () {
+        document.getElementById('over-screen').classList.remove('show-once');
+        startGame();
+      });
+      document.getElementById('retry-btn').addEventListener('click', function () {
+        document.getElementById('over-screen').classList.remove('show-once');
+        startGame();
+      });
+      // タイトル画面用にチーズと地形を用意
+      resetCheese();
+      ensureChunks(0);
+      updateGround(0);
+      updateFences(0);
+      camera.position.set(0, groundH(0, 14) + 3.4, 4);
+      animate();
+    })();
+    </script>
+  </body>
+</html>
