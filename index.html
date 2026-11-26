@@ -125,6 +125,24 @@
       .new-record.show { display: block; }
       .result-best { margin: 6px 0 20px; color: var(--panel-sub); font-weight: 700; }
 
+      /* ---------- 速度倍率コントロール ---------- */
+      .speed-ctl { margin: 20px auto 0; max-width: 340px; }
+      .speed-ctl label { display: block; font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+      .speed-ctl .speed-val { color: var(--accent-dark); }
+      .speed-ctl input[type="range"] { width: 100%; height: 30px; accent-color: var(--accent); cursor: pointer; }
+      .speed-note { margin: 0; font-size: 12.5px; color: var(--panel-sub); font-weight: 700; }
+      #speed-hud {
+        position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; z-index: 7;
+        display: none; align-items: center; gap: 8px;
+        background: var(--panel-bg); color: var(--panel-text);
+        border-radius: 999px; padding: 5px 12px;
+        font-size: 13px; font-weight: 800;
+        box-shadow: 0 4px 14px rgba(30, 40, 5, 0.25);
+      }
+      #speed-hud.show { display: flex; }
+      #speed-hud input[type="range"] { width: 104px; accent-color: var(--accent); cursor: pointer; }
+      #speed-hud .speed-val { color: var(--accent-dark); min-width: 3.1em; }
+
       /* ---------- Virtual stick ---------- */
       #stick-base, #stick-knob {
         position: fixed; z-index: 6; pointer-events: none;
@@ -156,6 +174,10 @@
 
     <div id="hud"><div id="distance">0<small>m</small></div></div>
     <div id="chasers"></div>
+    <div id="speed-hud">
+      <span>チーズ <span class="speed-val">×1.0</span>／追手 <span class="chaser-val">×1.0</span></span>
+      <input type="range" class="speed-slider" id="speed-slider-hud" min="1" max="5" step="0.1" value="1" aria-label="速度倍率" />
+    </div>
 
     <div id="stick-base"></div>
     <div id="stick-knob"></div>
@@ -165,6 +187,11 @@
         <h1>転がり<span class="ch">チーズ</span></h1>
         <p class="tagline">丘を転がって、追手から逃げきろう！</p>
         <button class="big-btn" id="start-btn" type="button">スタート</button>
+        <div class="speed-ctl">
+          <label for="speed-slider-title">チーズ速度 <span class="speed-val">×1.0</span>（追手 <span class="chaser-val">×1.0</span>）</label>
+          <input type="range" class="speed-slider" id="speed-slider-title" min="1" max="5" step="0.1" value="1" />
+          <p class="speed-note">追手はチーズより控えめに速くなるよ（チーズ3倍で追手1.75倍、5倍で追手3倍）</p>
+        </div>
         <div class="howto">
           <h3>遊び方</h3>
           <ul>
@@ -174,6 +201,7 @@
             <li>丸太・岩・干し草・低木に当たると高く跳ねる（減速は少しだけ）。追手はもっと転びやすい</li>
             <li>空中にいる間は捕まらない。空中でも操作できて、左右で着地点をずらしたり、上で加速・下で急降下できる</li>
             <li>追手は100mごとに1人増える。捕まるまでの距離を競おう</li>
+            <li>速度は1〜5倍まで変えられる（プレイ中は右上）。追手は控えめに速くなる（チーズ5倍で追手3倍）</li>
           </ul>
         </div>
         <p class="best-line">最高記録：<span id="title-best">0 m</span></p>
@@ -186,6 +214,10 @@
         <div class="result-dist"><span id="result-dist">0</span><small> m</small></div>
         <p class="new-record" id="new-record">★ 新記録！</p>
         <p class="result-best">最高記録：<span id="over-best">0 m</span></p>
+        <div class="speed-ctl" style="margin-top:0; margin-bottom:18px;">
+          <label for="speed-slider-over">チーズ速度 <span class="speed-val">×1.0</span>（追手 <span class="chaser-val">×1.0</span>）</label>
+          <input type="range" class="speed-slider" id="speed-slider-over" min="1" max="5" step="0.1" value="1" />
+        </div>
         <button class="big-btn" id="retry-btn" type="button">もう一回</button>
       </div>
     </div>
@@ -214,6 +246,38 @@
 
       var best = 0;
       try { best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch (e) { best = 0; }
+
+      /* 速度倍率（スライダー＝チーズ側の倍率、1.0〜5.0、現在バランス＝1倍）。
+         掛けるのは「前進スピードの上限系」だけ：チーズの↑ブースト上限・
+         全体ソフトキャップ・最低転がり速度と、追手の基本速度・ラバーバンド
+         目標・下限/上限・救済速度・進路への横寄せ速度（横だけ固定だと
+         速いときにチーズを抜かしてしまう）。
+         追手にはチーズ倍率をそのまま掛けず、別の換算倍率 CM を使う：
+         チーズ1倍→追手1倍、チーズ3倍→追手1.75倍、チーズ5倍→追手3倍
+         の3点を通る区分線形（1〜3間と3〜5間をそれぞれ線形補間）。
+         チーズを速くしても追手はそこまで速くならないので、高速ほど
+         逃げ切りやすくなる。追手の出現時初速（1.7〜2.1、倍率なし）は
+         換算の対象外で、立ち上がりの目標だけが CM に従う。立ち上がりは
+         出現から3秒かけて初速から目標速度へ線形（等加速）に増える。
+         加速度やブレーキの強さ、横移動、バウンスの初速と弱重力、重力、
+         転倒・復帰などの時間系には掛けないので、加速の立ち上がりや
+         飛び跳ねる高さ・滞空時間は倍率によらず1倍時とまったく同じ。
+         ゲーム全体を倍速化（タイムスケール）するものではない。
+         スライダーを動かしても今出ている速度は書き換えず、上限系だけが
+         変わって実際の速度は物理で自然に追いつく／落ち着く */
+      var SPEED_KEY = 'korogari-cheese-speed';
+      var SM = 1;
+      try {
+        var savedSm = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
+        if (isFinite(savedSm)) SM = Math.min(5, Math.max(1, savedSm));
+      } catch (e) { SM = 1; }
+      /* チーズ倍率 sm → 追手倍率の換算（区分線形）。
+         1〜3: 1 + (sm-1)*0.375 ／ 3〜5: 1.75 + (sm-3)*0.625 */
+      function chaserMultFor(sm) {
+        if (sm <= 3) return 1 + (sm - 1) * 0.375;
+        return 1.75 + (sm - 3) * 0.625;
+      }
+      var CM = chaserMultFor(SM);
 
       /* ================= 地形 =================
          z が進む方向。全体にゆるい下り＋うねり。 */
@@ -759,14 +823,19 @@
       function spawnChaser(zPos, xPos) {
         var p = makePerson(shirtColors[shirtIdx % shirtColors.length], pantsMats[shirtIdx % pantsMats.length]);
         shirtIdx++;
+        var spawnSpeed = (3.4 + Math.random() * 0.8) * CM;
         var c = {
           p: p,
-          x: xPos, z: zPos, speed: 3.4 + Math.random() * 0.8,
-          maxSpeed: 8.4 + Math.random() * 0.7,
+          x: xPos, z: zPos, speed: spawnSpeed,
+          rampFrom: spawnSpeed, // 出現時の初速（線形ランプの始点）。初期配置では startGame が低い初速で上書きする
+          rampElapsed: 3, // 線形ランプ経過秒。初期値は完了状態（3秒）にして、startGame 側で 0 に戻した個体だけランプさせる
+          rampDur: 3,     // 線形ランプの長さ（秒）：出現から3秒で目標速度へ直線的に到達
+          maxSpeed: 8.4 + Math.random() * 0.7, // 1倍時の基本値。使用時に CM（追手換算倍率）を掛ける
           lane: (Math.random() * 2 - 1) * 2.6,
           phase: Math.random() * 6,
           state: 'run',       // run | dive | catch | trip | getup
           timer: 0,
+          closeTimer: 0,      // 至近距離に居続けた時間（張り付き捕獲の保険用）
           diveCooldown: 1 + Math.random() * 2,
           diveFromX: 0, diveFromZ: 0, diveToX: 0, diveToZ: 0,
           lastOb: null
@@ -819,8 +888,19 @@
         // 前回（5〜8m）は近すぎたので距離を取り直したが、15〜31m後方だと
         // カメラの後ろにいて全く見えなかったので、その中間——スタート直後は
         // 画面の下端あたりに小さく見え、時間をかけて詰めてくる距離感にする
+        // 初速はチーズと同じ低さから立ち上げる：チーズは vz=2.6 のほぼ
+        // 静止から加速するのに、追手が出現時点で (3.4〜4.2)×倍率（倍率5
+        // なら17〜21）で来ると、倍率が高いほど開始直後に真後ろへ張り付く。
+        // 初速は倍率を掛けない 1.7〜2.1（従来の2.4〜3.0の約0.7倍）にし、
+        // 立ち上がりは線形ランプにする：出現から3秒かけて初速から目標
+        // 速度へ一定の割合で直線的に増やす。従来の「差に比例して近づく」
+        // 方式は序盤ほど速く増えて出足が速く見えるため使わない。ランプ
+        // 中は倍率によらず同じ進み方になり、序盤の迫り方が揃う
         for (var i = 0; i < 6; i++) {
-          spawnChaser(-9.8 - i * 0.8, (Math.random() * 2 - 1) * 4);
+          var sc = spawnChaser(-9.8 - i * 0.8, (Math.random() * 2 - 1) * 4);
+          sc.speed = 1.7 + Math.random() * 0.4;
+          sc.rampFrom = sc.speed;
+          sc.rampElapsed = 0;
         }
         groundZ = 1e9; fenceZ = 1e9;
         ensureChunks(0);
@@ -832,6 +912,7 @@
         document.getElementById('over-screen').classList.add('hidden');
         document.getElementById('hud').classList.add('show');
         document.getElementById('chasers').classList.add('show');
+        document.getElementById('speed-hud').classList.add('show');
         updateHud();
       }
       function gameOver() {
@@ -926,6 +1007,7 @@
         var c = cheese;
         var sl = slopeZ(c.x, c.z);
         // 勾配による加速度（下り＝sl<0 で加速）。重力の斜面成分は以前の3倍。
+        // 加速度そのものには倍率を掛けない（1倍時と立ち上がりは同一）
         var a = -27.0 * sl / (1 + sl * sl * 0.4);
         // ↑入力の加速（限度あり）：上限速度 BOOST_CAP までは強く加速し、
         // 上限に近づくにつれて入力の効きが弱まり、上限以上は入力だけでは
@@ -933,14 +1015,16 @@
         // 障害物バウンスの着地後など、減速した状態から能動的に立て直す
         // ためのもの。空中でも同じ上限つきで効き（従来の空中加速を統合）、
         // 着地直後からそのまま加速し直せる。
-        if (input.fwd > 0 && c.vz < BOOST_CAP) {
-          var bt = Math.min(1, (BOOST_CAP - c.vz) / 1.5);
+        if (input.fwd > 0 && c.vz < BOOST_CAP * SM) {
+          var bt = Math.min(1, (BOOST_CAP * SM - c.vz) / 1.5);
           a += input.fwd * (c.grounded ? 10.0 : 7.5) * bt;
         }
-        a -= input.brake * 12.0;           // ブレーキ（重くなった分こちらも強め）
-        // 抵抗も強めて最高速は以前の落ち着いたペース（約13.5）に収める
+        a -= input.brake * 12.0;      // ブレーキ（重くなった分こちらも強め）
+        // 抵抗も強めて最高速は以前の落ち着いたペース（約13.5）に収める。
+        // 抵抗係数にも倍率は掛けない：効きは1倍時と同一で、上限系
+        // （ブースト上限・ソフトキャップ）だけが倍率で伸びる
         a -= c.vz * 0.09 + c.vz * Math.abs(c.vz) * 0.012;
-        if (c.vz > SOFT_CAP) a -= (c.vz - SOFT_CAP) * 3.6; // ソフトキャップ（BOOST_CAPとは切り離し：↑入力の上限7.5より上で物理的に出た速度を7.5へ引き戻さない。従来通り約11.5から緩やかに効く）
+        if (c.vz > SOFT_CAP * SM) a -= (c.vz - SOFT_CAP * SM) * 3.6; // ソフトキャップ（BOOST_CAPとは切り離し：↑入力の上限7.5より上で物理的に出た速度を7.5へ引き戻さない。従来通り約11.5から緩やかに効く）
         c.vz += a * dt;
         if (c.vz < 0) c.vz = c.vz < -2 ? -2 + (c.vz + 2) * 0.2 : c.vz; // 後退はほぼしない
         if (c.vz < 0) c.vz = Math.max(c.vz, -1.5);
@@ -948,7 +1032,7 @@
         // （追手側の「下限で上りでも止まらない」と同じ考え方。従来は長い上りで
         // vz が 0 以下まで落ち、後退クランプに張り付いて永久に止まっていた。
         // ブレーキ入力中は対象外＝意図的な減速は今まで通り効く）
-        if (c.grounded && input.brake <= 0 && c.vz < 2.4) c.vz = 2.4;
+        if (c.grounded && input.brake <= 0 && c.vz < 2.4 * SM) c.vz = 2.4 * SM;
 
         // 左右移動
         // input.x は「画面上の方向」（+1＝画面右）。カメラ後方視点では
@@ -958,6 +1042,7 @@
         // 遠心力：前進速度が速いほど、横入力で外側へ大きく膨らむ
         var centri = Math.min(4.6, c.vz * c.vz * 0.028);
         // 空中では横の狙いを少し大きくして、着地点をずらせるようにする
+        // 横移動の速度・応答には倍率を掛けない（1倍時のまま）
         var targetVx = -input.x * (5.0 + centri) * (c.grounded ? 1 : 1.3);
         // 慣性：速いほど入力への追従と減衰が鈍り、離しても外側へ滑り続ける
         var latRate = input.x !== 0 ? (7 - 3.2 * speedF) : (7 - 4.2 * speedF);
@@ -993,6 +1078,8 @@
           // 初速と弱重力を両方とも半分にし、跳躍高さを半分にしつつ滞空時間を維持
           // （h=v²/2g, t=2v/g より、vとgを同率で下げると t は不変で h だけ下がる）
           // （丘の起伏で自然に浮いたときは通常の重力のまま）
+          // バウンス系は倍率の対象外：初速も弱重力も1倍時の値のままなので、
+          // 飛び跳ねる高さと滞空時間は倍率によらず完全に同じになる
           var gNow = c.bounceAir ? GRAV * 0.25 : GRAV;
           c.vy -= gNow * dt;
           // 空中操作：下入力で落下を早める（急降下）
@@ -1048,34 +1135,70 @@
         cheeseGroup.rotation.y = c.vx * 0.012;
       }
       function bounce(c, power) {
-        if (c.grounded || c.vy < power) {
+        var p = power; // バウンス初速は倍率の対象外（高さ・滞空は1倍時と同一に保つ）
+        if (c.grounded || c.vy < p) {
           c.grounded = false;
-          c.vy = power;
+          c.vy = p;
           c.bounceAir = true; // この跳躍中は弱重力で滞空を長くする
         }
       }
 
       /* ================= 追手の更新 ================= */
+      /* 線分（x1,z1）→（x2,z2）と点（px,pz）の最短距離。
+         捕獲判定を「今の位置の点」だけで見ると、倍率を上げて1フレームの
+         移動量が大きくなったときに捕獲圏を飛び越えて素通りしてしまう
+         （チーズを抜かして捕まえられなくなる主因のひとつ）ので、
+         前フレーム位置からの移動線分で判定する */
+      function segPointDist(px, pz, x1, z1, x2, z2) {
+        var abx = x2 - x1, abz = z2 - z1;
+        var l2 = abx * abx + abz * abz;
+        var t = l2 > 0 ? ((px - x1) * abx + (pz - z1) * abz) / l2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        var qx = x1 + abx * t - px, qz = z1 + abz * t - pz;
+        return Math.sqrt(qx * qx + qz * qz);
+      }
       function tripChaser(c, dur) {
         c.state = 'trip';
         c.timer = dur || 1.15;
         c.speed = 0;
+        c.rampElapsed = c.rampDur; // 転倒したら出現ランプは終了（転倒・復帰の挙動は従来通り）
       }
       /* 捕獲ジャンプ：捕獲圏内に入った追手がチーズ目がけて跳び、空中で
          届いた瞬間に捕獲が確定する。滞空は約0.62秒で、弱重力気味に
          フワッと浮くカーブ（sin^0.75）にする。水平位置は「今のチーズ
-         位置」へ補間し続けるので、ジャンプが始まったら逃げ切れない */
+         位置」へ補間し続けるので、ジャンプが始まったら逃げ切れない。
+         開始は地面にいるときだけ（走行中の接触／至近距離の張り付き）。
+         飛び込みの空中からは開始しない：空中から始めると、飛び込みの
+         着地点を捨てて向き直る2段ジャンプに見えてしまうため */
       function startCatchJump(c) {
         c.state = 'catch';
         c.timer = 0;
         c.catchDur = 0.62;
         c.catchFromX = c.x;
         c.catchFromZ = c.z;
-        c.catchY0 = c.p.root.position.y - groundH(c.x, c.z); // 開始時点の浮き（飛び込み中なら引き継ぐ）
+        c.catchY0 = c.p.root.position.y - groundH(c.x, c.z); // 開始時点の浮き（地面からなら約0）
+      }
+      /* 追手がチーズより前に出ないための z の上限。
+         スタート直後の猶予（runTime<4、捕獲も飛び込みもしない）では、
+         最低でも保つ間隔を 8m から 0.45m へ徐々に縮める。倍率を上げると
+         追手の足だけが速くなり、猶予が明ける前にチーズの真後ろ0.45mまで
+         詰めて張り付き、捕まえもせず数秒ついてくるだけになっていた
+         （倍率1では追手がそもそも4秒以内にそこまで詰められない）。
+         間隔が時間とともに縮むので、どの倍率でも「じわじわ迫ってきて、
+         猶予が明ける頃に背後へ届く」1倍時と同じ迫り方になる */
+      function chaserZLimit() {
+        var lim = cheese.z - 0.45;
+        if (runTime < 4) {
+          var gap = 0.45 + 7.55 * (1 - runTime / 4);
+          lim = Math.min(lim, cheese.z - gap);
+        }
+        return lim;
       }
       function updateChaser(c, dt) {
         var p = c.p;
         c.diveCooldown -= dt;
+        if (c.rampElapsed < c.rampDur) c.rampElapsed = Math.min(c.rampDur, c.rampElapsed + dt);
+        if (c.state !== 'run') c.closeTimer = 0; // 至近距離タイマーは走行中だけ数える
 
         if (c.state === 'catch') {
           c.timer += dt;
@@ -1114,8 +1237,10 @@
         if (c.state === 'getup') {
           c.timer -= dt;
           p.body.rotation.x += (0 - p.body.rotation.x) * Math.min(1, dt * 8);
-          c.speed += (c.maxSpeed * 0.4 - c.speed) * Math.min(1, dt * 3);
+          c.speed += (c.maxSpeed * CM * 0.4 - c.speed) * Math.min(1, dt * 3);
           c.z += c.speed * dt;
+          var gzLim = chaserZLimit();
+          if (c.z > gzLim) c.z = gzLim; // 起き上がり中も追い越さない（猶予中は間隔を保つ）
           p.root.position.set(c.x, groundH(c.x, c.z), c.z);
           if (c.timer <= 0) { c.state = 'run'; p.body.rotation.x = 0; }
           return;
@@ -1123,15 +1248,24 @@
         if (c.state === 'dive') {
           c.timer -= dt;
           var t = 1 - Math.max(0, c.timer) / 0.55;
+          var dPrevX = c.x, dPrevZ = c.z;
           c.x = c.diveFromX + (c.diveToX - c.diveFromX) * t;
           c.z = c.diveFromZ + (c.diveToZ - c.diveFromZ) * t;
           var gy = groundH(c.x, c.z);
           p.root.position.set(c.x, gy + Math.sin(t * Math.PI) * 0.85 + 0.1, c.z);
           p.body.rotation.x = 0.85;
           // 捕獲判定（チーズが地面にいるときだけ／スタート4秒間は捕まえない）
-          var ddx = cheese.x - c.x, ddz = cheese.z - c.z;
-          if (runTime > 4 && cheese.grounded && ddx * ddx + ddz * ddz < 1.15 * 1.15) {
-            startCatchJump(c);
+          // 飛び込みは「着地点までの一発勝負」：実際にチーズへ届いたとき
+          // だけ、そのまま捕獲が成立する。以前は圏内を通過した時点で
+          // 捕獲ジャンプ（catch）へ切り替えていたが、catch は今のチーズ
+          // 位置へ追尾し続けるため、空中で方向転換して飛び直す
+          // 2段ジャンプ＋確定捕獲になっていた。飛び込みの途中で catch へ
+          // は移行しない（catch は地面での接触・張り付きからのみ開始）。
+          // 判定は移動線分で見る：速いと点判定では圏内を飛び越えてしまう
+          if (runTime > 4 && cheese.grounded && segPointDist(cheese.x, cheese.z, dPrevX, dPrevZ, c.x, c.z) < 1.0) {
+            p.armL.rotation.x = -2.6;
+            p.armR.rotation.x = -2.6;
+            onCaught();
             return;
           }
           if (c.timer <= 0) {
@@ -1146,22 +1280,46 @@
         // --- run ---
         var dz = cheese.z - c.z;
         var sl = slopeZ(c.x, c.z);
-        var target = c.maxSpeed;
-        if (dz > 9) target += Math.min(2.6, (dz - 9) * 0.26); // 離れたときだけ穏やかに追い上げる（距離感を保ちつつ、完全に見失わないように）
+        var target = c.maxSpeed * CM;
+        if (dz > 9) target += Math.min(2.6 * CM, (dz - 9) * 0.26 * CM); // 離れたときだけ穏やかに追い上げる（距離感を保ちつつ、完全に見失わないように）
         // 坂の影響は目標速度への一回だけにする（以前は目標と実速度の両方に
         // 効いていて上りで二重に失速していた）。下限4.2で上りでも止まらない
-        target += -sl * 10;
-        if (target < 4.2) target = 4.2;
-        if (target > 12.0) target = 12.0;
-        c.speed += (target - c.speed) * Math.min(1, dt * 0.55);
+        target += -sl * 10 * CM;
+        if (target < 4.2 * CM) target = 4.2 * CM;
+        if (target > 12.0 * CM) target = 12.0 * CM;
+        if (c.rampElapsed < c.rampDur) {
+          // 出現直後の立ち上がりは線形ランプ：初速 rampFrom から目標
+          // target へ、経過時間に比例して直線的に増やす（等加速）。
+          // 目標が坂などで多少動いても、毎フレーム「始点→現在の目標」を
+          // 経過割合で結ぶので増え方はほぼ直線になる
+          var rp = c.rampElapsed / c.rampDur;
+          c.speed = c.rampFrom + (target - c.rampFrom) * rp;
+        } else {
+          c.speed += (target - c.speed) * Math.min(1, dt * 0.55);
+        }
         var effSpeed = c.speed;
+        var prevX = c.x, prevZ = c.z;
         c.z += effSpeed * dt;
-        // 横はチーズの進路へ寄る
-        var tx = cheese.x + c.lane;
+        // 横はチーズの進路へ寄る。寄る速さにも倍率を掛ける：前進だけが
+        // 倍率で速くなると、横の寄せが間に合わないままチーズの横を
+        // 素通りし、捕獲圏（半径約1m）に入れずに抜かしてしまう。
+        // レーンの横ずれは距離が縮むにつれて消していく：レーン分ずれた
+        // まま真後ろ0.45mに張り付くと、チーズとの距離が約1.1mで捕獲圏
+        // （1.02m）の外に留まり続け、飛び込み待ちでついてくるだけに
+        // なる。近づくほどチーズの真後ろに重なるよう寄せれば、走行中
+        // の接触でも捕獲ジャンプが発動する
+        var laneBlend = Math.max(0, Math.min(1, dz / 6));
+        var tx = cheese.x + c.lane * laneBlend;
         var dxT = tx - c.x;
-        c.x += Math.max(-2.6 * dt, Math.min(2.6 * dt, dxT * dt * 1.1));
+        c.x += Math.max(-2.6 * CM * dt, Math.min(2.6 * CM * dt, dxT * dt * 1.1 * CM));
         if (c.x > PATH_HALF - 0.3) c.x = PATH_HALF - 0.3;
         if (c.x < -PATH_HALF + 0.3) c.x = -PATH_HALF + 0.3;
+        // 追い越し防止：チーズの少し後ろより前へは出ない。一度前に出ると
+        // 目標速度は下がらず前に走り続けるので、捕獲の機会が二度と来ない。
+        // 後ろに留まれば、レーン寄せと飛び込みで必ず捕獲圏に入れる。
+        // 猶予中は chaserZLimit が間隔を保つので、真後ろに張り付かない
+        var zLim = chaserZLimit();
+        if (c.z > zLim) c.z = zLim;
 
         // 走りアニメ（脚の回転は実際の移動速度に比例させる）
         c.phase += dt * Math.max(0, effSpeed) * 0.95;
@@ -1198,17 +1356,35 @@
         // 飛び込み判定（スタート4秒間は飛び込まない）
         var cdx = cheese.x - c.x, cdz = cheese.z - c.z;
         var dist2 = cdx * cdx + cdz * cdz;
-        if (runTime > 4 && dist2 < 4.3 * 4.3 && cdz > 0.4 && c.diveCooldown <= 0 && c.speed > 4) {
+        // 張り付き捕獲（保険）：猶予明けに至近距離（1.6m以内）へ入り続け
+        // たら、飛び込みのクールダウンや接触判定の成否に関係なく、短時間
+        // で捕獲ジャンプに入る。真後ろに張り付いたまま捕まえもせず
+        // ついてくるだけの状態が続かないようにするため
+        if (runTime > 4 && cheese.grounded && dist2 < 1.6 * 1.6) {
+          c.closeTimer += dt;
+          if (c.closeTimer >= 0.35) {
+            startCatchJump(c);
+            return;
+          }
+        } else {
+          c.closeTimer = 0;
+        }
+        if (runTime > 4 && dist2 < 4.3 * 4.3 && cdz > 0.4 && c.diveCooldown <= 0 && c.speed > 4 * CM) {
           c.state = 'dive';
           c.timer = 0.55;
           c.diveFromX = c.x; c.diveFromZ = c.z;
           c.diveToX = cheese.x + cheese.vx * 0.3;
-          c.diveToZ = cheese.z + cheese.vz * 0.42;
+          // 着地点は「飛び込みが終わる0.55秒後にチーズがいる位置」に合わせる。
+          // 以前は0.42秒分しか予測しておらず、速くなるほど着地点がチーズの
+          // 後ろにずれて届かなくなっていた（ずれは速度に比例して広がる）
+          c.diveToZ = cheese.z + cheese.vz * 0.55;
           c.diveCooldown = 2.6 + Math.random() * 1.6;
           return;
         }
         // 接触で捕獲圏内 → 即捕獲ではなく捕獲ジャンプへ（空中は捕まらない／スタート4秒間は捕まえない）
-        if (runTime > 4 && cheese.grounded && dist2 < 1.02 * 1.02) {
+        // 判定は移動線分でも見る：点だけだと速いときに圏内を飛び越える
+        if (runTime > 4 && cheese.grounded &&
+            (dist2 < 1.02 * 1.02 || segPointDist(cheese.x, cheese.z, prevX, prevZ, c.x, c.z) < 1.02)) {
           startCatchJump(c);
         }
       }
@@ -1265,7 +1441,8 @@
             if (chasers.length < 24) {
               // 追加の追手は20〜24m後ろから、全速で走りながら合流させる
               var nc = spawnChaser(cheese.z - 20 - Math.random() * 4, cheese.x + (Math.random() * 2 - 1) * 4);
-              nc.speed = nc.maxSpeed;
+              nc.speed = nc.maxSpeed * CM;
+              nc.rampFrom = nc.speed; nc.rampElapsed = nc.rampDur; // 追加の追手は従来通り全速合流（線形ランプ対象外）
             }
           }
           nearestChaser = 1e9;
@@ -1280,7 +1457,8 @@
               // （距離は取るが、長く姿が見えない状態にはしない）
               c.z = cheese.z - 18 - Math.random() * 3;
               c.x = cheese.x + (Math.random() * 2 - 1) * 4;
-              c.state = 'run'; c.speed = c.maxSpeed * 0.95;
+              c.state = 'run'; c.speed = c.maxSpeed * CM * 0.95;
+              c.rampElapsed = c.rampDur; // 救済は従来通り（線形ランプ対象外）
               c.p.body.rotation.x = 0;
             }
             var dd = Math.abs(ddz) + Math.abs(cheese.x - c.x) * 0.5;
@@ -1327,6 +1505,7 @@
             os.classList.add('show-once');
             document.getElementById('hud').classList.remove('show');
             document.getElementById('chasers').classList.remove('show');
+            document.getElementById('speed-hud').classList.remove('show');
             stick.active = false;
             stickBase.classList.remove('on'); stickKnob.classList.remove('on');
           }
@@ -1359,6 +1538,34 @@
 
       /* ================= UI ================= */
       document.getElementById('title-best').textContent = best + ' m';
+
+      /* 速度倍率スライダー（タイトル／プレイ中／結果の3か所を同期させる） */
+      var speedSliders = document.querySelectorAll('.speed-slider');
+      var speedVals = document.querySelectorAll('.speed-val');
+      var chaserVals = document.querySelectorAll('.chaser-val');
+      function refreshSpeedUI() {
+        var label = '×' + SM.toFixed(1);
+        var clabel = '×' + CM.toFixed(2).replace(/0$/, '');
+        Array.prototype.forEach.call(speedSliders, function (s) { s.value = SM; });
+        Array.prototype.forEach.call(speedVals, function (v) { v.textContent = label; });
+        Array.prototype.forEach.call(chaserVals, function (v) { v.textContent = clabel; });
+      }
+      function setSpeedMult(v) {
+        v = Math.min(5, Math.max(1, parseFloat(v) || 1));
+        v = Math.round(v * 10) / 10;
+        if (v !== SM) {
+          SM = v;
+          CM = chaserMultFor(SM);
+          try { localStorage.setItem(SPEED_KEY, String(SM)); } catch (e) {}
+          // 今出ている速度は書き換えない：変わるのは上限系だけで、
+          // 実際の速度は物理で自然に追いつく／落ち着く
+        }
+        refreshSpeedUI();
+      }
+      Array.prototype.forEach.call(speedSliders, function (s) {
+        s.addEventListener('input', function () { setSpeedMult(s.value); });
+      });
+      refreshSpeedUI();
       document.getElementById('start-btn').addEventListener('click', function () {
         document.getElementById('over-screen').classList.remove('show-once');
         startGame();
